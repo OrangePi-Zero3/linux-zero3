@@ -4,9 +4,11 @@
  */
 
 #include <linux/clk-provider.h>
+#include <linux/io.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
+#include <linux/pm_domain.h>
 
 #include "ccu_common.h"
 #include "ccu_reset.h"
@@ -217,6 +219,86 @@ static const struct sunxi_ccu_desc sun50i_h616_r_ccu_desc = {
 	.num_resets	= ARRAY_SIZE(sun50i_h616_r_ccu_resets),
 };
 
+#define	PD_H616_GPU_REG			0x254
+
+struct sun50i_h616_ppu_pd {
+	struct generic_pm_domain	genpd;
+	void __iomem			*base;
+};
+
+#define to_sun50i_h616_ppu_pd(_genpd) \
+	container_of(_genpd, struct sun50i_h616_ppu_pd, genpd)
+
+static bool sun50i_h616_ppu_power_status(const struct sun50i_h616_ppu_pd *pd)
+{
+	return !readl(pd->base + PD_H616_GPU_REG);
+}
+
+static int sun50i_h616_ppu_pd_set_power(const struct sun50i_h616_ppu_pd *pd,
+					bool power_on)
+{
+	if (power_on)
+		writel(0, pd->base + PD_H616_GPU_REG);
+	else
+		writel(1, pd->base + PD_H616_GPU_REG);
+
+	return 0;
+}
+
+static int sun50i_h616_ppu_pd_power_on(struct generic_pm_domain *genpd)
+{
+	const struct sun50i_h616_ppu_pd *pd = to_sun50i_h616_ppu_pd(genpd);
+
+	return sun50i_h616_ppu_pd_set_power(pd, true);
+}
+
+static int sun50i_h616_ppu_pd_power_off(struct generic_pm_domain *genpd)
+{
+	const struct sun50i_h616_ppu_pd *pd = to_sun50i_h616_ppu_pd(genpd);
+
+	return sun50i_h616_ppu_pd_set_power(pd, false);
+}
+
+static int sun50i_h616_register_ppu(struct platform_device *pdev,
+				    void __iomem *base)
+{
+	struct device *dev = &pdev->dev;
+	struct genpd_onecell_data *ppu;
+	struct sun50i_h616_ppu_pd *pd;
+	int ret;
+
+	pd = devm_kzalloc(dev, sizeof(*pd), GFP_KERNEL);
+	if (!pd)
+		return -ENOMEM;
+
+	ppu = devm_kzalloc(dev, sizeof(*ppu), GFP_KERNEL);
+	if (!ppu)
+		return -ENOMEM;
+
+	ppu->domains = devm_kzalloc(dev, sizeof(*ppu->domains), GFP_KERNEL);
+	if (!ppu->domains)
+		return -ENOMEM;
+
+	ppu->num_domains = 1;
+	pd->genpd.name		= "GPU";
+	pd->genpd.power_off	= sun50i_h616_ppu_pd_power_off;
+	pd->genpd.power_on	= sun50i_h616_ppu_pd_power_on;
+	pd->base		= base;
+
+	ret = pm_genpd_init(&pd->genpd, NULL, !sun50i_h616_ppu_power_status(pd));
+	if (ret) {
+		dev_warn(dev, "Failed to add GPU power domain: %d\n", ret);
+		return ret;
+	}
+
+	ppu->domains[0] = &pd->genpd;
+	ret = of_genpd_add_provider_onecell(dev->of_node, ppu);
+	if (ret)
+		dev_warn(dev, "Failed to add provider: %d\n", ret);
+
+	return 0;
+}
+
 static int sun50i_h6_r_ccu_probe(struct platform_device *pdev)
 {
 	const struct sunxi_ccu_desc *desc;
@@ -229,6 +311,8 @@ static int sun50i_h6_r_ccu_probe(struct platform_device *pdev)
 	reg = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(reg))
 		return PTR_ERR(reg);
+
+	sun50i_h616_register_ppu(pdev, reg);
 
 	return devm_sunxi_ccu_probe(&pdev->dev, reg, desc);
 }
