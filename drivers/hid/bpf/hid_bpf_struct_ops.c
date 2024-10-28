@@ -183,6 +183,10 @@ static int hid_bpf_reg(void *kdata, struct bpf_link *link)
 	struct hid_device *hdev;
 	int count, err = 0;
 
+	/* prevent multiple attach of the same struct_ops */
+	if (ops->hdev)
+		return -EINVAL;
+
 	hdev = hid_get_device(ops->hid_id);
 	if (IS_ERR(hdev))
 		return PTR_ERR(hdev);
@@ -248,6 +252,7 @@ static void hid_bpf_unreg(void *kdata, struct bpf_link *link)
 
 	list_del_rcu(&ops->list);
 	synchronize_srcu(&hdev->bpf.srcu);
+	ops->hdev = NULL;
 
 	reconnect = hdev->bpf.rdesc_ops == ops;
 	if (reconnect)
@@ -271,9 +276,23 @@ static int __hid_bpf_rdesc_fixup(struct hid_bpf_ctx *ctx)
 	return 0;
 }
 
+static int __hid_bpf_hw_request(struct hid_bpf_ctx *ctx, unsigned char reportnum,
+				enum hid_report_type rtype, enum hid_class_request reqtype,
+				u64 source)
+{
+	return 0;
+}
+
+static int __hid_bpf_hw_output_report(struct hid_bpf_ctx *ctx, u64 source)
+{
+	return 0;
+}
+
 static struct hid_bpf_ops __bpf_hid_bpf_ops = {
 	.hid_device_event = __hid_bpf_device_event,
 	.hid_rdesc_fixup = __hid_bpf_rdesc_fixup,
+	.hid_hw_request = __hid_bpf_hw_request,
+	.hid_hw_output_report = __hid_bpf_hw_output_report,
 };
 
 static struct bpf_struct_ops bpf_hid_bpf_ops = {

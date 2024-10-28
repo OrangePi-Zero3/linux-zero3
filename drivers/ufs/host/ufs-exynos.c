@@ -8,7 +8,7 @@
  *
  */
 
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include <crypto/aes.h>
 #include <linux/arm-smccc.h>
 #include <linux/clk.h>
@@ -1292,6 +1292,9 @@ static void exynos_ufs_fmp_init(struct ufs_hba *hba, struct exynos_ufs *ufs)
 static void exynos_ufs_fmp_resume(struct ufs_hba *hba)
 {
 	struct arm_smccc_res res;
+
+	if (!(hba->caps & UFSHCD_CAP_CRYPTO))
+		return;
 
 	arm_smccc_smc(SMC_CMD_FMP_SECURITY, 0, SMU_EMBEDDED, CFG_DESCTYPE_3,
 		      0, 0, 0, 0, &res);

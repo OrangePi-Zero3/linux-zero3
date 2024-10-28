@@ -39,11 +39,21 @@ properties:
 
   clocks:
     maxItems: 1
-    description: phandle to the master clock (mclk)
+    description:
+      Optionally, either a crystal can be attached externally between MCLK1 and
+      MCLK2 pins, or an external CMOS-compatible clock can drive the MCLK2
+      pin. If absent, internal 4.92MHz clock is used, which can be made
+      available on MCLK2 pin.
 
   clock-names:
-    items:
-      - const: mclk
+    enum:
+      - xtal
+      - mclk
+
+  "#clock-cells":
+    const: 0
+    description:
+      If present when internal clock is used, configured as clock provider.
 
   interrupts:
     maxItems: 1
@@ -120,9 +130,8 @@ patternProperties:
         description:
           Positive input can be connected to pins AIN1 to AIN16 by choosing the
           appropriate value from 1 to 16. Negative input is connected to AINCOM.
-        items:
-          minimum: 1
-          maximum: 16
+        minimum: 1
+        maximum: 16
 
     oneOf:
       - required:
@@ -135,8 +144,6 @@ patternProperties:
 required:
   - compatible
   - reg
-  - clocks
-  - clock-names
   - interrupts
   - dvdd-supply
   - avdd-supply
@@ -157,6 +164,18 @@ allOf:
     then:
       patternProperties:
         "^channel@[0-9a-f]+$": false
+  - if:
+      anyOf:
+        - required:
+            - clocks
+        - required:
+            - clock-names
+    then:
+      properties:
+        "#clock-cells": false
+      required:
+        - clocks
+        - clock-names
 
 unevaluatedProperties: false
 
@@ -202,8 +221,7 @@ examples:
             spi-max-frequency = <1000000>;
             spi-cpol;
             spi-cpha;
-            clocks = <&ad7192_mclk>;
-            clock-names = "mclk";
+            #clock-cells = <0>;
             interrupts = <25 0x2>;
             interrupt-parent = <&gpio>;
             aincom-supply = <&aincom>;
