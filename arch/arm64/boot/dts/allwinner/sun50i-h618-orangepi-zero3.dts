@@ -11,6 +11,9 @@
 / {
 	model = "OrangePi Zero3";
 	compatible = "xunlong,orangepi-zero3", "allwinner,sun50i-h618";
+	chosen {
+		bootargs = "root=/dev/mmcblk0p2 console=ttyS0,115200 earlycon";
+	};
 };
 
 &cpu0 {
@@ -98,4 +101,8 @@
 	vcc-pg-supply = <&reg_aldo1>;
 	vcc-ph-supply = <&reg_dldo1>;
 	vcc-pi-supply = <&reg_dldo1>;
+};
+
+&ir {
+	status = "okay";
 };
